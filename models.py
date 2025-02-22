@@ -48,3 +48,8 @@ class TaskTrackerTrack(Base):
     yandex_music_album_id: Mapped[str | None] = mapped_column(VARCHAR(), index=True, nullable=True)
     yandex_music_track_id: Mapped[str | None] = mapped_column(VARCHAR(), index=True, nullable=True)
     completed: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+
+
+class TaskUserInfo(Base):
+    user_id: Mapped[str | None] = mapped_column(VARCHAR(), index=True, nullable=False)
+    yandex_access_token: Mapped[str | None] = mapped_column(VARCHAR(), index=True, nullable=True)

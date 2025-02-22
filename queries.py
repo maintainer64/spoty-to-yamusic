@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import models
 from typing import Iterator
 
-from sqlalchemy import create_engine, select, and_
+from sqlalchemy import create_engine, select, and_, func
 from sqlalchemy.orm import Session, sessionmaker
 from config import DATABASE_URL
 
@@ -93,6 +93,60 @@ def get_track_not_completed(db: Session) -> models.TaskTrackerTrack | None:
     query = select(models.TaskTrackerTrack).where(models.TaskTrackerTrack.completed.is_(False)).order_by(
         models.TaskTrackerTrack.updated_at.asc()).limit(1)
     return db.scalars(query).one_or_none()
+
+
+def get_or_create_user_model(
+        db: Session,
+        user_id: str | None,
+) -> models.TaskUserInfo:
+    query = select(models.TaskUserInfo).where(
+        and_(
+            models.TaskUserInfo.user_id == user_id,
+        )
+    ).order_by(models.TaskUserInfo.updated_at.asc()).limit(1)
+    entity = db.scalars(query).one_or_none()
+    if entity is not None:
+        return entity
+    entity = models.TaskUserInfo(
+        id=uuid.uuid4(),
+        user_id=user_id,
+    )
+    db.add(entity)
+    db.commit()
+    return entity
+
+
+def get_list_relations_tracks(
+        db: Session,
+        user_id: str | None,
+) -> str:
+    formated = []
+    query = select(models.TaskTrackerAlbum).where(
+        and_(
+            models.TaskUserInfo.user_id == user_id,
+        )
+    ).order_by(models.TaskUserInfo.created_at.desc()).limit(5)
+    entities = db.scalars(query).all()
+    for entity in entities:
+        query = select(func.count(models.TaskTrackerTrack.id).label('count')).where(
+            and_(
+                models.TaskTrackerTrack.spotify_album_id == entity.spotify_album_id,
+                models.TaskTrackerTrack.tg_id == entity.tg_id,
+            ),
+        )
+        _all = db.scalars(query).one()
+        query = select(func.count(models.TaskTrackerTrack.id).label('count')).where(
+            and_(
+                models.TaskTrackerTrack.spotify_album_id == entity.spotify_album_id,
+                models.TaskTrackerTrack.tg_id == entity.tg_id,
+                models.TaskTrackerTrack.completed.is_(True),
+            ),
+        )
+        _completed = db.scalars(query).one()
+        formated.append(
+            f"[{entity.spotify_album_id}] [{_completed} / {_all}]"
+        )
+    return "\n".join(formated)
 
 
 if __name__ == "__main__":

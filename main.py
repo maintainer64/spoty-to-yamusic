@@ -22,25 +22,18 @@ def init():
 
 
 @cli.command()
-@click.argument("url", type=str)
-def add_album(url):
-    """Добавляет задачу на перенос альбома по URL."""
-    add_task_album(url)
-    click.echo(f"Задача на перенос альбома по URL '{url}' добавлена.")
-
-
-@cli.command()
-def start_loop():
+def loop():
     """Запускает фоновую задачу loop_forever."""
     click.echo("Запуск фоновой задачи loop_forever...")
     loop_forever()
 
 
 @cli.command()
-def one_loop():
+def bot():
     """Запускает один раз задачу loop."""
-    click.echo("Запуск фоновой задачи loop...")
-    loop()
+    click.echo("Запуск фоновой задачи bot...")
+    from bot import main
+    main()
 
 
 if __name__ == "__main__":

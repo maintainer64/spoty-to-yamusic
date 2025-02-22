@@ -8,7 +8,6 @@ https://developer.spotify.com
 import io
 import time
 import uuid
-from datetime import datetime, UTC
 from pathlib import Path
 
 import requests
@@ -28,9 +27,6 @@ sp = Spotify(
         client_secret=SPOTIFY_CLIENT_SECRET
     )
 )
-
-# Инициализация Яндекс.Музыки
-yandex_client = YaMusicClient(YANDEX_MUSIC_TOKEN).init()
 _spotdl = None
 
 
@@ -104,12 +100,14 @@ def spotify_get_album(_id: str, _type: str):
     raise TypeError("I'm not found type")
 
 
-def spotify_get_album_tracks(_id: str, _type: str):
+def spotify_get_album_tracks(_id: str, _type: str) -> list[str]:
     print(f"Получение spotify плейлиста/альбома по {_id=} {_type=}")
     if _type == models.TaskTrackerAlbumType.album.value:
-        return sp.album_tracks(_id, limit=100, offset=0)
+        tracks = sp.album_tracks(_id, limit=50, offset=0)
+        return [track['id'] for track in tracks['items']]
     if _type == models.TaskTrackerAlbumType.playlist.value:
-        return sp.playlist_items(_id, limit=100, offset=0)
+        tracks = sp.playlist_items(_id, limit=100, offset=0)
+        return [track["track"]['id'] for track in tracks['items']]
     raise TypeError("I'm not found type")
 
 
@@ -122,6 +120,9 @@ def from_album_to_spotify(db: Session) -> int:
     task = queries.get_albums_not_completed(db=db)
     if task is None:
         return 0
+    user = queries.get_or_create_user_model(db=db, user_id=task.tg_id)
+    # Инициализация Яндекс.Музыки
+    yandex_client = YaMusicClient(user.yandex_access_token).init()
     # Получает информацию об альбоме из Spotify
     album_info = spotify_get_album(task.spotify_album_id, task.type)
     if task.yandex_music_album_id is None:
@@ -138,13 +139,13 @@ def from_album_to_spotify(db: Session) -> int:
         bytes_io=download_image(cover_url),
         playlist_id=task.yandex_music_album_id,
     )
-    tracks = spotify_get_album_tracks(task.spotify_album_id, task.type)
-    for track in tracks['items']:
+    tracks_ids = spotify_get_album_tracks(task.spotify_album_id, task.type)
+    for track_id in tracks_ids:
         queries.get_or_create_track_by_params(
             db=db,
             tg_id=task.tg_id,
             spotify_album_id=task.spotify_album_id,
-            spotify_track_id=track["track"]['id'],
+            spotify_track_id=track_id,
             yandex_music_album_id=task.yandex_music_album_id,
         )
     task.completed = True
@@ -172,7 +173,9 @@ def from_track_to_spotify(db: Session):
     if path is None or song is None:
         print(f"Произошла ошибка при загрузки трека на local из spotify {task.spotify_track_id}")
         return 1
-
+    user = queries.get_or_create_user_model(db=db, user_id=task.tg_id)
+    # Инициализация Яндекс.Музыки
+    yandex_client = YaMusicClient(user.yandex_access_token).init()
     task.yandex_music_track_id = yandex_client.upload_track(
         path=path,
         playlist_id=task.yandex_music_album_id,
@@ -193,7 +196,7 @@ def loop():
                 result += from_album_to_spotify(db=db)
             with queries.get_db() as db:
                 result += from_track_to_spotify(db=db)
-        except Exception as err:
+        except Exception:
             import traceback
             traceback.print_exc()
             result = 1
@@ -206,19 +209,19 @@ def loop_forever():
         time.sleep(5 * 60)
 
 
-def add_task_album(url: str):
-    for type in models.TaskTrackerAlbumType:
+def add_task_album(user_id: str, url: str):
+    for _type in models.TaskTrackerAlbumType:
         try:
-            album = spotify_get_album(url, type.value)
+            album = spotify_get_album(url, _type.value)
             with queries.get_db() as db:
                 queries.get_or_create_album_by_params(
                     db=db,
-                    tg_id=str(uuid.uuid4()),
+                    tg_id=user_id,
                     spotify_album_id=album["id"],
-                    type=type.value,
+                    type=_type.value,
                 )
             return None
-        except TypeError:
+        except Exception:
             pass
     else:
         raise TypeError("Не найдено подходящего типа для ссылки")
