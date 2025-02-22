@@ -125,7 +125,7 @@ def get_list_relations_tracks(
         and_(
             models.TaskUserInfo.user_id == user_id,
         )
-    ).order_by(models.TaskUserInfo.created_at.desc()).limit(5)
+    ).order_by(models.TaskUserInfo.created_at.asc()).limit(5)
     entities = db.scalars(query).all()
     for entity in entities:
         query = select(func.count(models.TaskTrackerTrack.id).label('count')).where(
